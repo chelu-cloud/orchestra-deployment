@@ -1,0 +1,107 @@
+# ==========================================
+# CREDENCIALES Y SECRETOS
+# ==========================================
+*.csv
+*.pem
+*.key
+*accessKeys*
+*credentials*
+*secret*
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# TERRAFORM
+# ==========================================
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/terraform.tfstate.backup
+# tfvars puede tener secretos — usa terraform.tfvars.example como plantilla
+**/terraform.tfvars
+!**/terraform.tfvars.example
+**/override.tf
+**/override.tf.json
+**/*_override.tf
+**/*_override.tf.json
+crash.log
+crash.*.log
+
+# ==========================================
+# JAVA / SPRING BOOT (Maven)
+# ==========================================
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+*.log.*
+hs_err_pid*
+replay_pid*
+
+# ==========================================
+# FRONTEND (Vue.js / Node)
+# ==========================================
+app-frontend/node_modules/
+app-frontend/dist/
+app-frontend/dist.zip
+app-frontend/.npm
+app-frontend/.eslintcache
+app-frontend/.stylelintcache
+*.tsbuildinfo
+
+# ==========================================
+# DOCKER
+# ==========================================
+.dockerignore
+
+# ==========================================
+# IDEs Y EDITORES
+# ==========================================
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ==========================================
+# SISTEMA OPERATIVO
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Desktop.ini
+
+# ==========================================
+# ARCHIVOS DE LOG Y TEMPORALES
+# ==========================================
+console.log
+*.log
+*.tmp
+*.temp
+*.bak
+
+# ==========================================
+# PDFs GENERADOS (no son código)
+# ==========================================
+QRTicket.pdf
+
+# ==========================================
+# ANSIBLE
+# ==========================================
+despliegue/ansible/*.retryapp-backend/hardcodedThings
+app-backend/src/main/resources/application.properties
+app-backend/hardcodedThings

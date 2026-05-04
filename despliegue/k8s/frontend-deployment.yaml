@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-deployment
+  labels:
+    app: frontend-deployment
+spec:
+  replicas: 3 
+  selector:  
+    matchLabels:
+      app: frontend-deployment
+  template: 
+    metadata:
+      labels:
+        app: frontend-deployment
+    spec:
+      serviceAccountName: service-account-orchestra-frontend
+      containers:
+      - name: nginx
+        image: 1234567890.dkr.ecr.us-east-1.amazonaws.com/mi-frontend:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"

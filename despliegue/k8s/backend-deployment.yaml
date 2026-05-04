@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  labels:
+    app: backend-deployment  
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend-deployment
+  template:
+    metadata:
+      labels:
+        app: backend-deployment
+    spec:
+      serviceAccountName: service-account-orchestra-backend 
+      containers:
+      - name: backend-container 
+        image: 1234567890.dkr.ecr.us-east-1.amazonaws.com/mi-backend:latest
+        ports:
+        - containerPort: 8080   
+        env: # 
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: k8s-db-secret
+              key: password
+        volumeMounts: 
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+      volumes: #
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "aws-secrets-config"
