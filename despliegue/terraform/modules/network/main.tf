@@ -1,41 +1,45 @@
 data "aws_region" "current" {}
 
 resource "aws_vpc" "vpc_a"{
-    cidr_block = var.cidr_block_vpc_a
-    enable_dns_support   = true  # Activa el servidor DNS de AWS 
-    enable_dns_hostnames = true  # Asigna nombres DNS a los recursos con IP pública
+    cidr_block           = var.cidr_block_vpc_a
+    enable_dns_support   = true  
+    enable_dns_hostnames = true  
     tags = {
         Name = "VPC A - Chelu"
     }
 }
 
 resource "aws_subnet" "a_subnet_public" {
-    count = length(var.public_subnet_cidr_a)
-    vpc_id = aws_vpc.vpc_a.id
-    cidr_block = var.public_subnet_cidr_a[count.index]
-    availability_zone = var.az[count.index]
+    count                   = length(var.public_subnet_cidr_a)
+    vpc_id                  = aws_vpc.vpc_a.id
+    cidr_block              = var.public_subnet_cidr_a[count.index]
+    availability_zone       = var.az[count.index]
     map_public_ip_on_launch = true
 
     tags = {
-        Name = "Subnet ${count.index} publica VPC A - Chelu"
+        Name                                = "Subnet ${count.index} publica VPC A - Chelu"
+        "kubernetes.io/role/elb"            = "1"
+        "kubernetes.io/cluster/cluster_app" = "shared"
     }
 }
 
 resource "aws_subnet" "a_subnet_private_app" {
-    count = length(var.private_subnet_cidr_a_app)
-    vpc_id = aws_vpc.vpc_a.id
-    cidr_block = var.private_subnet_cidr_a_app[count.index]
+    count             = length(var.private_subnet_cidr_a_app)
+    vpc_id            = aws_vpc.vpc_a.id
+    cidr_block        = var.private_subnet_cidr_a_app[count.index]
     availability_zone = var.az[count.index]
 
     tags = {
-        Name = "Subnet ${count.index} app VPC A - Chelu"
+        Name                                = "Subnet ${count.index} app VPC A - Chelu"
+        "kubernetes.io/role/internal-elb"   = "1"
+        "kubernetes.io/cluster/cluster_app" = "shared"
     }
 }
 
 resource "aws_subnet" "a_subnet_private_data" {
-    count = length(var.private_subnet_cidr_a_data)
-    vpc_id = aws_vpc.vpc_a.id
-    cidr_block = var.private_subnet_cidr_a_data[count.index]
+    count             = length(var.private_subnet_cidr_a_data)
+    vpc_id            = aws_vpc.vpc_a.id
+    cidr_block        = var.private_subnet_cidr_a_data[count.index]
     availability_zone = var.az[count.index]
 
     tags = {
@@ -64,12 +68,12 @@ resource "aws_nat_gateway" "nat" {
 # ROUTE TABLES
 # -----------------------------------------------
 
-resource "aws_route_table" "rt_pub_a" { // Cada route table pertenece a una subnet, la cual es su origen
+resource "aws_route_table" "rt_pub_a" { 
   vpc_id = aws_vpc.vpc_a.id
 
   route {
-    cidr_block = "0.0.0.0/0" // Destino 
-    gateway_id = aws_internet_gateway.igw.id // Puerta de salida
+    cidr_block = "0.0.0.0/0" 
+    gateway_id = aws_internet_gateway.igw.id 
   }
 
   tags = {
@@ -81,7 +85,7 @@ resource "aws_route_table" "rt_priv_a" {
   vpc_id = aws_vpc.vpc_a.id
 
   route {
-    cidr_block = "0.0.0.0/0"
+    cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.nat.id
   }
 
@@ -129,9 +133,9 @@ resource "aws_security_group" "backend" {
 }
 
 resource "aws_security_group" "data-base" {
-    name = "data-base sg"
+    name        = "data-base sg"
     description = "Data base security group. Allow egress to ethernet for downloading libraries"
-    vpc_id = aws_vpc.vpc_a.id
+    vpc_id      = aws_vpc.vpc_a.id
 
     tags = {
         Name = "sg-database"
@@ -141,37 +145,29 @@ resource "aws_security_group" "data-base" {
 resource "aws_security_group_rule" "bakcend-egress" {
     security_group_id = aws_security_group.backend.id
 
-    type = "egress"
-
+    type        = "egress"
     cidr_blocks = ["0.0.0.0/0"]
-    from_port = 0
-    to_port = 0
-
-    protocol = "-1"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
 }
 
 resource "aws_security_group_rule" "db-ingress" {
-    security_group_id = aws_security_group.data-base.id
+    security_group_id        = aws_security_group.data-base.id
     source_security_group_id = aws_security_group.backend.id
 
-    type = "ingress"
-
+    type      = "ingress"
     from_port = 5432
-    to_port = 5432
-
-    protocol = "tcp"
+    to_port   = 5432
+    protocol  = "tcp"
 }
 
 resource "aws_security_group_rule" "db_egress_local" {
   security_group_id = aws_security_group.data-base.id
 
-  cidr_blocks       = [var.cidr_block_vpc_a]
-  type              = "egress"
-  from_port         = 0
-  to_port           = 0
-
-  protocol          = "-1" 
+  cidr_blocks = [var.cidr_block_vpc_a]
+  type        = "egress"
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1" 
 }
-
-
-

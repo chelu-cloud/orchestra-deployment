@@ -1,5 +1,3 @@
-
-
 resource "aws_eks_cluster" "cluster_app" {
   name     = "cluster_app"
 
@@ -36,25 +34,22 @@ data "tls_certificate" "eks" {
   url = aws_eks_cluster.cluster_app.identity[0].oidc[0].issuer
 }
 
-# 2. Creamos el proveedor de identidad en IAM vinculándolo al clúster
 resource "aws_iam_openid_connect_provider" "eks" {
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
   url             = aws_eks_cluster.cluster_app.identity[0].oidc[0].issuer
 }
 
-# Creamos la entrada en la lista del clúster para el usuario
-resource "aws_eks_access_entry" "venganza_admin" {
+resource "aws_eks_access_entry" "github_actions" {
   cluster_name      = aws_eks_cluster.cluster_app.name
-  principal_arn     = "arn:aws:iam::622370466117:user/eks-venganza"
+  principal_arn     = "arn:aws:iam::622370466117:role/github-actions-eks-role"
   type              = "STANDARD"
 }
 
-# Ponemos como admin del clúster a esa entrada
-resource "aws_eks_access_policy_association" "venganza_admin_policy" {
+resource "aws_eks_access_policy_association" "github_actions_policy" {
   cluster_name  = aws_eks_cluster.cluster_app.name
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-  principal_arn = aws_eks_access_entry.venganza_admin.principal_arn
+  principal_arn = aws_eks_access_entry.github_actions.principal_arn
 
   access_scope {
     type = "cluster"

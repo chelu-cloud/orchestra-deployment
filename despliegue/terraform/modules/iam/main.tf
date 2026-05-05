@@ -125,9 +125,24 @@ resource "aws_iam_role" "github_actions_role" {
   })
 }
 
+resource "aws_iam_policy" "github_eks_describe" {
+  name        = "github-actions-describe-eks"
+  description = "Permite a GitHub Actions obtener el kubeconfig"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = "eks:DescribeCluster"
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "github_eks_access" {
   role       = aws_iam_role.github_actions_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterAdminPolicy" 
+  policy_arn = aws_iam_policy.github_eks_describe.arn
 }
 
 data "http" "alb_controller_policy" {
