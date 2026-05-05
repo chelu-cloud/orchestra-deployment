@@ -2,8 +2,8 @@
 
 # 🎼 Orchestra Deployment
 
-Repositorio de infraestructura y despliegue **GitOps** para la plataforma Orchestra.
-Aprovisiona AWS con Terraform y despliega la aplicación en Kubernetes mediante GitHub Actions.
+**GitOps** infrastructure and deployment repository for the Orchestra platform.
+Provisions AWS with Terraform and deploys the application on Kubernetes via GitHub Actions.
 
 ![Terraform](https://img.shields.io/badge/Terraform-≥1.0-7B42BC?logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-eu--west--3-FF9900?logo=amazon-aws&logoColor=white)
@@ -15,71 +15,71 @@ Aprovisiona AWS con Terraform y despliega la aplicación en Kubernetes mediante 
 
 ---
 
-## 📋 Índice
+## 📋 Table of Contents
 
-- [Arquitectura general](#-arquitectura-general)
-- [Requisitos previos](#-requisitos-previos)
-- [Estructura del repositorio](#-estructura-del-repositorio)
-- [Infraestructura — Terraform](#-infraestructura--terraform)
-  - [Dependencias entre módulos](#dependencias-entre-módulos)
-  - [Módulo: network](#módulo-network)
-  - [Módulo: eks](#módulo-eks)
-  - [Módulo: ecr](#módulo-ecr)
-  - [Módulo: iam](#módulo-iam)
-  - [Módulo: storage](#módulo-storage)
+- [General Architecture](#-general-architecture)
+- [Prerequisites](#-prerequisites)
+- [Repository Structure](#-repository-structure)
+- [Infrastructure — Terraform](#-infrastructure--terraform)
+  - [Module Dependencies](#module-dependencies)
+  - [Module: network](#module-network)
+  - [Module: eks](#module-eks)
+  - [Module: ecr](#module-ecr)
+  - [Module: iam](#module-iam)
+  - [Module: storage](#module-storage)
 - [Kubernetes](#-kubernetes)
-  - [Vista general del clúster](#vista-general-del-clúster)
-  - [Despliegues y recursos](#despliegues-y-recursos)
-  - [Enrutamiento con ALB](#enrutamiento-con-alb)
-  - [RBAC y Service Accounts](#rbac-y-service-accounts)
+  - [Cluster Overview](#cluster-overview)
+  - [Deployments & Resources](#deployments--resources)
+  - [ALB Routing](#alb-routing)
+  - [RBAC & Service Accounts](#rbac--service-accounts)
 - [CI/CD — GitHub Actions](#-cicd--github-actions)
-  - [Flujo GitOps completo](#flujo-gitops-completo)
-  - [Autenticación OIDC](#autenticación-oidc)
-- [Secretos requeridos](#-secretos-requeridos)
-- [Despliegue paso a paso](#-despliegue-paso-a-paso)
-- [Seguridad](#-seguridad)
+  - [Full GitOps Flow](#full-gitops-flow)
+  - [OIDC Authentication](#oidc-authentication)
+- [Required Secrets](#-required-secrets)
+- [Step-by-Step Deployment](#-step-by-step-deployment)
+- [Security](#-security)
 
 ---
 
-## 🏗 Arquitectura general
+## 🏗 General Architecture
 
-Vista de alto nivel de todos los componentes AWS y cómo se relacionan entre sí.
+High-level view of all AWS components and how they relate to each other.
 
 ```mermaid
 graph TB
     Internet(["🌐 Internet"])
 
-    subgraph AWS ["☁️ AWS — eu-west-3 (París)"]
+    subgraph AWS ["☁️ AWS — eu-west-3 (Paris)"]
 
         subgraph VPC ["🔒 VPC  10.0.0.0/16"]
 
-            subgraph PUB ["Subnets Públicas — eu-west-3a/3b"]
+            subgraph PUB ["Public Subnets — eu-west-3a/3b"]
                 IGW["🔀 Internet Gateway"]
                 NAT["🔁 NAT Gateway + EIP"]
                 ALB["⚖️ ALB\norchestra-alb\n(internet-facing)"]
             end
 
-            subgraph APP ["Subnets Privadas — App  10.0.3-4.0/24"]
-                EKS["☸️ EKS  cluster_app  v1.31\n━━━━━━━━━━━━━━━━━━\nNode Group: 1–2 nodos\n3 pods backend · 3 pods frontend"]
+            subgraph APP ["Private Subnets — App  10.0.3-4.0/24"]
+                EKS["☸️ EKS  cluster_app  v1.31\n━━━━━━━━━━━━━━━━━━\nNode Group: 1–2 nodes\n3 backend pods · 3 frontend pods"]
             end
 
-            subgraph DATA ["Subnets Privadas — Datos  10.0.5-6.0/24"]
+            subgraph DATA ["Private Subnets — Data  10.0.5-6.0/24"]
                 RDS[("🐘 RDS PostgreSQL 14\ndb.t3.micro\npublicly_accessible: false")]
             end
         end
 
         ECR["📦 ECR\necr-frontend  IMMUTABLE\necr-backend   IMMUTABLE"]
-        SM["🔐 Secrets Manager\nCredenciales RDS (rotación auto)"]
+        SM["🔐 Secrets Manager\nRDS credentials (auto-rotation)"]
         S3["🗄️ S3\nTerraform state\norchestra-bucket-…"]
     end
 
     Internet -->|"HTTPS"| ALB
     ALB -->|"/ → frontend :80"| EKS
     ALB -->|"/api → backend :8080"| EKS
-    EKS -->|"TCP 5432 (SG permitido)"| RDS
-    EKS -->|"Pull imágenes"| ECR
+    EKS -->|"TCP 5432 (SG allowed)"| RDS
+    EKS -->|"Pull images"| ECR
     EKS -->|"GetSecretValue (IRSA)"| SM
-    APP -.->|"Egress vía NAT"| NAT
+    APP -.->|"Egress via NAT"| NAT
     NAT --> IGW
     IGW <--> Internet
 
@@ -90,67 +90,67 @@ graph TB
     style DATA fill:#ffe6e6,stroke:#cc0000,stroke-width:1px
 ```
 
-| Capa | Tecnología |
-|------|------------|
-| Infraestructura como código | Terraform ≥ 1.0 · provider AWS `~> 5.0` |
-| Orquestación de contenedores | Amazon EKS v1.31 |
-| Registro de imágenes | Amazon ECR — 2 repositorios (frontend + backend) |
-| Base de datos | Amazon RDS PostgreSQL 14 (`db.t3.micro`) |
+| Layer | Technology |
+|-------|------------|
+| Infrastructure as Code | Terraform ≥ 1.0 · AWS provider `~> 5.0` |
+| Container Orchestration | Amazon EKS v1.31 |
+| Image Registry | Amazon ECR — 2 repositories (frontend + backend) |
+| Database | Amazon RDS PostgreSQL 14 (`db.t3.micro`) |
 | Networking | VPC · IGW · NAT GW · Route Tables · Security Groups |
-| Identidad | IAM Roles · OIDC (IRSA + GitHub Actions) |
+| Identity | IAM Roles · OIDC (IRSA + GitHub Actions) |
 | Ingress | AWS Load Balancer Controller (ALB) |
-| Gestión de secretos | AWS Secrets Manager + Secrets Store CSI Driver |
+| Secret Management | AWS Secrets Manager + Secrets Store CSI Driver |
 | CI/CD | GitHub Actions (GitOps) |
 
 ---
 
-## ✅ Requisitos previos
+## ✅ Prerequisites
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) ≥ 1.0
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) v2 con credenciales de administrador
-- [kubectl](https://kubernetes.io/docs/tasks/tools/) y [Kustomize](https://kustomize.io/)
-- [Helm](https://helm.sh/) (para instalar ALB Controller y CSI Driver)
-- Bucket S3 `orchestra-bucket-622370466117-eu-west-3-an` creado previamente (backend de Terraform)
-- Permisos IAM suficientes para crear VPC, EKS, ECR, RDS e IAM roles
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) v2 configured with admin credentials
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) and [Kustomize](https://kustomize.io/)
+- [Helm](https://helm.sh/) (to install ALB Controller and CSI Driver)
+- S3 bucket `orchestra-bucket-622370466117-eu-west-3-an` created beforehand (Terraform backend)
+- IAM permissions to create VPC, EKS, ECR, RDS, and IAM roles
 
 ---
 
-## 📁 Estructura del repositorio
+## 📁 Repository Structure
 
 ```
 orchestra-deployment/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yaml              # Pipeline GitOps → EKS
+│       └── deploy.yaml              # GitOps pipeline → EKS
 ├── despliegue/
-│   ├── k8s/                         # Manifiestos de Kubernetes
+│   ├── k8s/                         # Kubernetes manifests
 │   │   ├── namespace.yaml           # orchestra-namespace
-│   │   ├── backend-deployment.yaml  # 3 réplicas, puerto 8080
+│   │   ├── backend-deployment.yaml  # 3 replicas, port 8080
 │   │   ├── backend-service.yaml
-│   │   ├── frontend-deployment.yaml # 3 réplicas, puerto 80 (Nginx)
+│   │   ├── frontend-deployment.yaml # 3 replicas, port 80 (Nginx)
 │   │   ├── frontend-service.yaml
-│   │   ├── ingress.yaml             # ALB internet-facing
+│   │   ├── ingress.yaml             # internet-facing ALB
 │   │   ├── rbac.yaml                # Role + RoleBinding CSI Driver
 │   │   ├── serviceAccount.yaml      # IRSA backend + frontend
-│   │   └── kustomization.yaml       # Gestión dinámica de image tags
+│   │   └── kustomization.yaml       # Dynamic image tag management
 │   └── terraform/
-│       ├── main.tf                  # Composición de módulos
-│       ├── backend.tf               # Estado remoto en S3
+│       ├── main.tf                  # Module composition
+│       ├── backend.tf               # Remote state in S3
 │       ├── providers.tf             # AWS provider eu-west-3
 │       └── modules/
 │           ├── network/             # VPC · Subnets · IGW · NAT · SGs
-│           ├── eks/                 # Clúster · Node Group · OIDC
-│           ├── ecr/                 # Repositorios de imágenes Docker
-│           ├── iam/                 # Roles · Políticas · OIDC providers
+│           ├── eks/                 # Cluster · Node Group · OIDC
+│           ├── ecr/                 # Docker image repositories
+│           ├── iam/                 # Roles · Policies · OIDC providers
 │           └── storage/             # RDS PostgreSQL + Subnet Group
-└── .gitignore                       # Excluye secretos, tfstate, .env…
+└── .gitignore                       # Excludes secrets, tfstate, .env…
 ```
 
 ---
 
-## 🔧 Infraestructura — Terraform
+## 🔧 Infrastructure — Terraform
 
-El estado se almacena de forma remota en S3:
+State is stored remotely in S3:
 
 ```hcl
 # despliegue/terraform/backend.tf
@@ -159,13 +159,13 @@ key    = "proyect/proyect.tfstate"
 region = "eu-west-3"
 ```
 
-### Dependencias entre módulos
+### Module Dependencies
 
-`main.tf` actúa como raíz que orquesta los cinco módulos pasando outputs entre ellos:
+`main.tf` acts as the root that orchestrates all five modules, passing outputs between them:
 
 ```mermaid
 graph LR
-    ROOT(["⚙️ main.tf\nraíz"])
+    ROOT(["⚙️ main.tf\nroot"])
 
     ROOT --> NET
     ROOT --> STOR
@@ -175,8 +175,8 @@ graph LR
 
     NET["📡 module.network\n─────────────────\nVPC · Subnets\nIGW · NAT GW · SGs"]
     STOR["🗄️ module.storage\n─────────────────\nRDS PostgreSQL\nSubnet Group"]
-    IAM["🔑 module.iam\n─────────────────\nRoles IAM\nOIDC Providers\nPolíticas"]
-    EKS["☸️ module.eks\n─────────────────\nClúster EKS\nNode Group\nOIDC Provider"]
+    IAM["🔑 module.iam\n─────────────────\nIAM Roles\nOIDC Providers\nPolicies"]
+    EKS["☸️ module.eks\n─────────────────\nEKS Cluster\nNode Group\nOIDC Provider"]
     ECR["📦 module.ecr\n─────────────────\necr-frontend\necr-backend"]
 
     NET -->|"private_data_subnet_ids\ndb_security_group_id"| STOR
@@ -195,39 +195,39 @@ graph LR
 
 ---
 
-### Módulo: network
+### Module: network
 
-**Ruta:** `despliegue/terraform/modules/network/`
+**Path:** `despliegue/terraform/modules/network/`
 
 ```mermaid
 graph TB
-    subgraph VPC ["🔒 VPC — 10.0.0.0/16   (DNS support + hostnames activados)"]
+    subgraph VPC ["🔒 VPC — 10.0.0.0/16   (DNS support + hostnames enabled)"]
 
         IGW["🔀 Internet Gateway"]
 
         subgraph AZA ["🟦 eu-west-3a"]
             direction TB
-            PUB_A["Subnet Pública\n10.0.1.0/24"]
-            APP_A["Subnet App EKS\n10.0.3.0/24"]
-            DAT_A["Subnet Datos RDS\n10.0.5.0/24"]
+            PUB_A["Public Subnet\n10.0.1.0/24"]
+            APP_A["App Subnet EKS\n10.0.3.0/24"]
+            DAT_A["Data Subnet RDS\n10.0.5.0/24"]
         end
 
         subgraph AZB ["🟥 eu-west-3b"]
             direction TB
-            PUB_B["Subnet Pública\n10.0.2.0/24"]
-            APP_B["Subnet App EKS\n10.0.4.0/24"]
-            DAT_B["Subnet Datos RDS\n10.0.6.0/24"]
+            PUB_B["Public Subnet\n10.0.2.0/24"]
+            APP_B["App Subnet EKS\n10.0.4.0/24"]
+            DAT_B["Data Subnet RDS\n10.0.6.0/24"]
         end
 
-        NAT["🔁 NAT GW + EIP\nen PUB_A"]
+        NAT["🔁 NAT GW + EIP\nin PUB_A"]
 
         SG_BE["SG: backend\negress all → 0.0.0.0/0"]
         SG_DB["SG: database\ningress TCP:5432 ← SG_BE\negress → VPC local only"]
     end
 
-    IGW <-->|"tráfico público"| PUB_A & PUB_B
+    IGW <-->|"public traffic"| PUB_A & PUB_B
     PUB_A --> NAT --> IGW
-    APP_A & APP_B -->|"RT privada → NAT"| NAT
+    APP_A & APP_B -->|"private RT → NAT"| NAT
     SG_BE -->|"TCP 5432"| SG_DB
 
     style VPC  fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
@@ -237,34 +237,34 @@ graph TB
     style SG_DB fill:#ffe0b2,stroke:#e65100
 ```
 
-| Recurso | CIDR / Valor |
-|---------|-------------|
+| Resource | CIDR / Value |
+|----------|-------------|
 | VPC | `10.0.0.0/16` |
-| Subnets públicas | `10.0.1.0/24`, `10.0.2.0/24` |
-| Subnets app (EKS) | `10.0.3.0/24`, `10.0.4.0/24` |
-| Subnets datos (RDS) | `10.0.5.0/24`, `10.0.6.0/24` |
+| Public subnets | `10.0.1.0/24`, `10.0.2.0/24` |
+| App subnets (EKS) | `10.0.3.0/24`, `10.0.4.0/24` |
+| Data subnets (RDS) | `10.0.5.0/24`, `10.0.6.0/24` |
 | AZs | `eu-west-3a`, `eu-west-3b` |
-| SG Backend | Egress total hacia `0.0.0.0/0` |
-| SG Database | Ingress solo TCP:5432 desde SG Backend |
+| SG Backend | Full egress to `0.0.0.0/0` |
+| SG Database | Ingress only TCP:5432 from SG Backend |
 
 ---
 
-### Módulo: eks
+### Module: eks
 
-**Ruta:** `despliegue/terraform/modules/eks/`
+**Path:** `despliegue/terraform/modules/eks/`
 
 ```mermaid
 graph TB
     subgraph EKS_MOD ["☸️ EKS — cluster_app"]
         CTRL["Control Plane\nEKS v1.31\nauthn: API mode"]
         NG["Node Group: ng-cluster\ndesired: 1 · min: 1 · max: 2"]
-        OIDC["OIDC Provider\npara IRSA"]
+        OIDC["OIDC Provider\nfor IRSA"]
         ADMIN["Access Entry\neks-venganza → ClusterAdmin"]
     end
 
     ROLE_CTRL["IAM Role\neks-cluster-role"]
     ROLE_NODE["IAM Role\neks-worker-node-role"]
-    SUBNETS["Subnets Privadas App\n10.0.3-4.0/24"]
+    SUBNETS["Private App Subnets\n10.0.3-4.0/24"]
 
     ROLE_CTRL --> CTRL
     ROLE_NODE --> NG
@@ -276,24 +276,24 @@ graph TB
     style EKS_MOD fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
 ```
 
-| Parámetro | Valor |
+| Parameter | Value |
 |-----------|-------|
-| Nombre | `cluster_app` |
-| Versión | `1.31` |
-| Autenticación | Modo `API` |
+| Name | `cluster_app` |
+| Version | `1.31` |
+| Authentication | `API` mode |
 | Node Group | `ng-cluster` — desired 1, min 1, max 2 |
-| Subnets | Privadas de app (multi-AZ) |
-| Admin IAM | `eks-venganza` con `AmazonEKSClusterAdminPolicy` |
+| Subnets | Private app subnets (multi-AZ) |
+| IAM Admin | `eks-venganza` with `AmazonEKSClusterAdminPolicy` |
 
 ---
 
-### Módulo: ecr
+### Module: ecr
 
-**Ruta:** `despliegue/terraform/modules/ecr/`
+**Path:** `despliegue/terraform/modules/ecr/`
 
 ```mermaid
 graph LR
-    GHA["GitHub Actions\nCI del repo de app"] -->|"docker push :sha-abc"| ECR_FE & ECR_BE
+    GHA["GitHub Actions\nApp repo CI"] -->|"docker push :sha-abc"| ECR_FE & ECR_BE
 
     subgraph ECR ["📦 Amazon ECR"]
         ECR_FE["ecr-frontend\n──────────────\nIMMUTABLE tags\nscan_on_push ✅"]
@@ -305,26 +305,26 @@ graph LR
     style ECR fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
 ```
 
-> **Tags inmutables:** una vez publicada una imagen con un tag concreto no puede sobreescribirse, garantizando trazabilidad completa y rollbacks seguros.
+> **Immutable tags:** once an image is published with a specific tag it cannot be overwritten, ensuring full traceability and safe rollbacks.
 
 ---
 
-### Módulo: iam
+### Module: iam
 
-**Ruta:** `despliegue/terraform/modules/iam/`
+**Path:** `despliegue/terraform/modules/iam/`
 
 ```mermaid
 graph TB
     subgraph GH_OIDC_BOX ["OIDC Provider — GitHub Actions"]
         GH_OIDC["token.actions.githubusercontent.com"]
-        GH_ROLE["IAM Role\ngithub-actions-eks-role\ncondición: repo:chelu-cloud/orchestra-deployment:*"]
+        GH_ROLE["IAM Role\ngithub-actions-eks-role\ncondition: repo:chelu-cloud/orchestra-deployment:*"]
         GH_POL["AmazonEKSClusterAdminPolicy"]
         GH_ROLE --> GH_POL
         GH_OIDC --> GH_ROLE
     end
 
     subgraph EKS_OIDC_BOX ["OIDC Provider — EKS / IRSA"]
-        EKS_OIDC["OIDC Provider EKS"]
+        EKS_OIDC["EKS OIDC Provider"]
         K8_ROLE["IAM Role\nkubernetes-oidc-role\nIRSA: sa-orchestra-backend"]
         K8_POL["IAM Policy: app-to-db-policy\nGetSecretValue ✅  DescribeSecret ✅"]
         ALB_ROLE["IAM Role\naws-load-balancer-controller-role\nIRSA: aws-load-balancer-controller"]
@@ -333,7 +333,7 @@ graph TB
         EKS_OIDC --> ALB_ROLE --> ALB_POL
     end
 
-    subgraph CLUSTER_ROLES ["Roles del Clúster EKS"]
+    subgraph CLUSTER_ROLES ["EKS Cluster Roles"]
         CTRL_ROLE["IAM Role: eks-cluster-role\nAmazonEKSClusterPolicy"]
         NODE_ROLE["IAM Role: eks-worker-node-role\nAmazonEKSWorkerNodePolicy\nAmazonEKS_CNI_Policy\nAmazonEC2ContainerRegistryReadOnly"]
     end
@@ -345,9 +345,9 @@ graph TB
 
 ---
 
-### Módulo: storage
+### Module: storage
 
-**Ruta:** `despliegue/terraform/modules/storage/`
+**Path:** `despliegue/terraform/modules/storage/`
 
 ```mermaid
 graph LR
@@ -357,34 +357,34 @@ graph LR
         SG_DB["SG: database\nTCP:5432 ← backend SG"]
     end
 
-    SM["🔐 AWS Secrets Manager\nmanage_master_user_password: true\nrotación automática"]
-    POD["Pod Backend\nCSI Driver"]
+    SM["🔐 AWS Secrets Manager\nmanage_master_user_password: true\nauto-rotation enabled"]
+    POD["Backend Pod\nCSI Driver"]
 
     SNG --> DB
     SG_DB --> DB
-    DB -->|"ARN del secreto"| SM
+    DB -->|"secret ARN"| SM
     SM -->|"GetSecretValue IRSA"| POD
 
     style RDS_MOD fill:#ffebee,stroke:#c62828,stroke-width:2px
     style SM fill:#fff9c4,stroke:#f57f17
 ```
 
-| Parámetro | Valor |
+| Parameter | Value |
 |-----------|-------|
-| Identificador | `postgres-test2` |
-| Motor | PostgreSQL 14 |
-| Instancia | `db.t3.micro` |
-| Almacenamiento | 10 GB |
-| Acceso público | `false` |
-| Contraseña | Gestionada por AWS Secrets Manager (rotación automática) |
+| Identifier | `postgres-test2` |
+| Engine | PostgreSQL 14 |
+| Instance | `db.t3.micro` |
+| Storage | 10 GB |
+| Public access | `false` |
+| Password | Managed by AWS Secrets Manager (auto-rotation) |
 
 ---
 
 ## ☸️ Kubernetes
 
-Todos los manifiestos pertenecen al namespace `orchestra-namespace`.
+All manifests belong to the `orchestra-namespace` namespace.
 
-### Vista general del clúster
+### Cluster Overview
 
 ```mermaid
 graph TB
@@ -399,13 +399,13 @@ graph TB
         ING["Ingress\norchestra-ingress\nALB internet-facing"]
 
         subgraph FE ["Frontend"]
-            FE_DEP["Deployment\nfrontend-deployment\n3 réplicas · Nginx :80"]
+            FE_DEP["Deployment\nfrontend-deployment\n3 replicas · Nginx :80"]
             FE_SVC["Service\nfrontend-service :8080"]
             SA_FE["ServiceAccount\nsa-orchestra-frontend"]
         end
 
         subgraph BE ["Backend"]
-            BE_DEP["Deployment\nbackend-deployment\n3 réplicas · Spring Boot :8080"]
+            BE_DEP["Deployment\nbackend-deployment\n3 replicas · Spring Boot :8080"]
             BE_SVC["Service\nbackend-service :80"]
             SA_BE["ServiceAccount\nsa-orchestra-backend\nIRSA → kubernetes-oidc-role"]
             VOL["Volume: secrets-store-inline\nCSI Driver → /mnt/secrets-store"]
@@ -428,9 +428,9 @@ graph TB
     BE_DEP -->|"GetSecretValue IRSA"| SM
     BE_DEP -->|"TCP 5432"| RDS
     CSI -->|"/mnt/secrets-store"| VOL --> BE_DEP
-    FE_DEP & BE_DEP -->|"Pull imagen"| ECR
+    FE_DEP & BE_DEP -->|"Pull image"| ECR
     ROLE --> RB --> CSI
-    ALBC -->|"Provisiona"| ALB_AWS
+    ALBC -->|"Provisions"| ALB_AWS
 
     style NS  fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     style KS  fill:#fff3e0,stroke:#e65100,stroke-width:1px
@@ -440,40 +440,40 @@ graph TB
 
 ---
 
-### Despliegues y recursos
+### Deployments & Resources
 
-| Parámetro | Backend | Frontend |
+| Parameter | Backend | Frontend |
 |-----------|---------|----------|
-| Réplicas | 3 | 3 |
-| Imagen base | `ecr-backend` | `ecr-frontend` (Nginx) |
-| Puerto contenedor | `8080` | `80` |
+| Replicas | 3 | 3 |
+| Base image | `ecr-backend` | `ecr-frontend` (Nginx) |
+| Container port | `8080` | `80` |
 | CPU request / limit | `250m` / `1` | `250m` / `1` |
 | Memory request / limit | `512Mi` / `1Gi` | `512Mi` / `1Gi` |
 | Service Account | `sa-orchestra-backend` | `sa-orchestra-frontend` |
-| Secretos DB | CSI Driver → `/mnt/secrets-store` | — |
+| DB Secrets | CSI Driver → `/mnt/secrets-store` | — |
 
 ---
 
-### Enrutamiento con ALB
+### ALB Routing
 
 ```mermaid
 sequenceDiagram
-    actor U as 🌐 Usuario
+    actor U as 🌐 User
     participant ALB as ⚖️ ALB (orchestra-alb)
     participant FE as frontend-service :8080
     participant BE as backend-service :80
 
-    Note over U,BE: Petición de página web
+    Note over U,BE: Web page request
     U->>ALB: GET /
     ALB->>FE: path Prefix "/"
     FE-->>U: 200 HTML/SPA (Nginx)
 
-    Note over U,BE: Llamada a la API
+    Note over U,BE: API call
     U->>ALB: GET /api/concerts
     ALB->>BE: path Prefix "/api"
     BE-->>U: 200 JSON (Spring Boot)
 
-    Note over U,BE: Recurso estático
+    Note over U,BE: Static asset
     U->>ALB: GET /assets/main.js
     ALB->>FE: path Prefix "/"
     FE-->>U: 200 JS (Nginx static)
@@ -481,37 +481,37 @@ sequenceDiagram
 
 ---
 
-### RBAC y Service Accounts
+### RBAC & Service Accounts
 
-El backend usa **IRSA (IAM Roles for Service Accounts)** para acceder a Secrets Manager sin credenciales estáticas:
+The backend uses **IRSA (IAM Roles for Service Accounts)** to access Secrets Manager without static credentials:
 
 ```mermaid
 sequenceDiagram
-    participant POD as Pod Backend
+    participant POD as Backend Pod
     participant K8 as Kubernetes API
-    participant EKS_OIDC as OIDC Provider EKS
+    participant EKS_OIDC as EKS OIDC Provider
     participant IAM as AWS IAM
     participant SM as 🔐 Secrets Manager
 
     POD->>K8: Token projection (ServiceAccount)
-    K8-->>POD: JWT firmado por OIDC
+    K8-->>POD: OIDC-signed JWT
     POD->>IAM: AssumeRoleWithWebIdentity (JWT + kubernetes-oidc-role)
-    IAM->>EKS_OIDC: Verificar JWT
-    EKS_OIDC-->>IAM: ✅ válido
-    IAM-->>POD: Credenciales STS temporales
-    POD->>SM: GetSecretValue (ARN del secreto DB)
-    SM-->>POD: username + password de RDS
+    IAM->>EKS_OIDC: Verify JWT
+    EKS_OIDC-->>IAM: ✅ valid
+    IAM-->>POD: Temporary STS credentials
+    POD->>SM: GetSecretValue (DB secret ARN)
+    SM-->>POD: RDS username + password
 ```
 
-**RBAC para el CSI Driver:**
+**RBAC for the CSI Driver:**
 
 ```mermaid
 graph LR
     ROLE["Role\ncsi-driver-token-creator\n────────────────────────\nresources: serviceaccounts/token\nverbs: create"]
     RB["RoleBinding\ncsi-driver-token-binding"]
     SA["ServiceAccount\nsecrets-store-csi-driver\n@ kube-system"]
-    CSI["DaemonSet CSI Driver"]
-    BE["Pod Backend\n/mnt/secrets-store"]
+    CSI["CSI Driver DaemonSet"]
+    BE["Backend Pod\n/mnt/secrets-store"]
 
     ROLE --> RB --> SA --> CSI --> BE
 ```
@@ -522,38 +522,38 @@ graph LR
 
 **Workflow:** `.github/workflows/deploy.yaml`
 
-| Trigger | Condición |
+| Trigger | Condition |
 |---------|-----------|
-| `push` a `main` | Solo si hay cambios en `k8s/**` |
-| `workflow_dispatch` | Ejecución manual desde GitHub UI |
-| `repository_dispatch` | Evento `deploy-trigger` enviado desde el repo de la app |
+| `push` to `main` | Only when changes are made under `k8s/**` |
+| `workflow_dispatch` | Manual run from GitHub UI |
+| `repository_dispatch` | `deploy-trigger` event sent from the app repo |
 
-### Flujo GitOps completo
+### Full GitOps Flow
 
 ```mermaid
 flowchart TD
-    DEV(["👨‍💻 Developer\ngit push a main"])
-    APP_REPO["🏗️ Repo de la App\nbuild + test + docker build"]
+    DEV(["👨‍💻 Developer\ngit push to main"])
+    APP_REPO["🏗️ App Repository\nbuild + test + docker build"]
     ECR_PUSH["📦 docker push\necr-backend:sha-abc123"]
     DISPATCH["📡 repository_dispatch\n{ app_name, image_tag }"]
 
     subgraph GHA ["🔄 GitHub Actions — orchestra-deployment"]
         A["1️⃣ actions/checkout@v4"]
-        B["2️⃣ configure-aws-credentials\nOIDC → github-actions-eks-role\nsin Access Keys estáticas"]
+        B["2️⃣ configure-aws-credentials\nOIDC → github-actions-eks-role\nno static Access Keys"]
         C["3️⃣ aws eks update-kubeconfig\ncluster_app · eu-west-3"]
-        D["4️⃣ Inyectar DB_SECRET_ARN\nen secretProviderClass vía sed"]
-        E{"¿repository_dispatch?"}
+        D["4️⃣ Inject DB_SECRET_ARN\ninto secretProviderClass via sed"]
+        E{"repository_dispatch?"}
         F["5️⃣ kustomize edit set image\nECR_URL = ECR_URL:sha-abc123"]
         G["6️⃣ kubectl apply -k k8s/"]
     end
 
-    EKS["☸️ EKS cluster_app\nRolling Update\n3 réplicas backend + 3 frontend"]
+    EKS["☸️ EKS cluster_app\nRolling Update\n3 backend replicas + 3 frontend"]
 
-    DEV -->|"cambio en k8s/**"| A
-    DEV -->|"push código app"| APP_REPO
+    DEV -->|"change in k8s/**"| A
+    DEV -->|"push app code"| APP_REPO
     APP_REPO --> ECR_PUSH --> DISPATCH --> A
     A --> B --> C --> D --> E
-    E -->|"Sí"| F --> G
+    E -->|"Yes"| F --> G
     E -->|"No"| G
     G --> EKS
 
@@ -565,9 +565,9 @@ flowchart TD
 
 ---
 
-### Autenticación OIDC
+### OIDC Authentication
 
-El proyecto usa OIDC en **dos capas independientes** para eliminar completamente el uso de credenciales AWS de larga duración:
+The project uses OIDC in **two independent layers** to completely eliminate the use of long-lived AWS credentials:
 
 ```mermaid
 sequenceDiagram
@@ -577,71 +577,71 @@ sequenceDiagram
     participant EKS_API as EKS API
 
     rect rgb(232, 245, 233)
-        Note over GHA,EKS_API: 🔐 Capa 1 — GitHub Actions → AWS (sin Access Keys)
-        GHA->>GH_OIDC: Solicita token OIDC
+        Note over GHA,EKS_API: 🔐 Layer 1 — GitHub Actions → AWS (no Access Keys)
+        GHA->>GH_OIDC: Request OIDC token
         GH_OIDC-->>GHA: JWT (sub: repo:chelu-cloud/orchestra-deployment:*)
         GHA->>IAM: AssumeRoleWithWebIdentity (JWT)
-        IAM-->>GHA: Credenciales STS temporales
-        GHA->>EKS_API: kubectl apply (credenciales STS)
-        EKS_API-->>GHA: ✅ Despliegue aplicado
+        IAM-->>GHA: Temporary STS credentials
+        GHA->>EKS_API: kubectl apply (STS credentials)
+        EKS_API-->>GHA: ✅ Deployment applied
     end
 
     rect rgb(227, 242, 253)
-        Note over GHA,EKS_API: 🔐 Capa 2 — Pod Backend → Secrets Manager (IRSA)
-        participant POD as Pod Backend
-        participant EKS_OIDC as OIDC Provider EKS
+        Note over GHA,EKS_API: 🔐 Layer 2 — Backend Pod → Secrets Manager (IRSA)
+        participant POD as Backend Pod
+        participant EKS_OIDC as EKS OIDC Provider
         participant SM as Secrets Manager
 
-        POD->>EKS_OIDC: Token del ServiceAccount
-        EKS_OIDC-->>POD: JWT firmado
+        POD->>EKS_OIDC: ServiceAccount token
+        EKS_OIDC-->>POD: Signed JWT
         POD->>IAM: AssumeRoleWithWebIdentity → kubernetes-oidc-role
-        IAM-->>POD: Credenciales STS temporales
-        POD->>SM: GetSecretValue (ARN secreto DB)
+        IAM-->>POD: Temporary STS credentials
+        POD->>SM: GetSecretValue (DB secret ARN)
         SM-->>POD: username + password
     end
 ```
 
 ---
 
-## 🔑 Secretos requeridos
+## 🔑 Required Secrets
 
-Configura en **GitHub → Settings → Secrets and variables → Actions:**
+Configure in **GitHub → Settings → Secrets and variables → Actions:**
 
-| Secreto | Descripción | Cómo obtenerlo |
-|---------|-------------|----------------|
-| `AWS_DB_SECRET_ARN` | ARN del secreto de RDS en Secrets Manager | Output `db_secret_arn_final` de `terraform apply` |
+| Secret | Description | How to get it |
+|--------|-------------|---------------|
+| `AWS_DB_SECRET_ARN` | ARN of the RDS secret in Secrets Manager | `db_secret_arn_final` output from `terraform apply` |
 
-> ℹ️ **No se necesitan** `AWS_ACCESS_KEY_ID` ni `AWS_SECRET_ACCESS_KEY`. La autenticación a AWS se gestiona mediante OIDC.
+> ℹ️ `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are **not needed**. AWS authentication is handled via OIDC.
 
 ---
 
-## 🚀 Despliegue paso a paso
+## 🚀 Step-by-Step Deployment
 
-### 1 — Aprovisionar infraestructura con Terraform
+### 1 — Provision infrastructure with Terraform
 
 ```bash
 cd despliegue/terraform
 
-# Inicializar — descarga providers y configura backend S3
+# Initialize — downloads providers and configures the S3 backend
 terraform init
 
-# Revisar el plan antes de aplicar
+# Review the plan before applying
 terraform plan
 
-# Aprovisionar
+# Provision
 terraform apply
 ```
 
-> Anota el output `db_secret_arn_final` y configúralo como secreto `AWS_DB_SECRET_ARN` en GitHub.
+> Note the `db_secret_arn_final` output and set it as the `AWS_DB_SECRET_ARN` secret in GitHub.
 
-### 2 — Conectar kubectl al clúster
+### 2 — Connect kubectl to the cluster
 
 ```bash
 aws eks update-kubeconfig --name cluster_app --region eu-west-3
-kubectl get nodes   # verificar nodos en estado Ready
+kubectl get nodes   # verify nodes are in Ready state
 ```
 
-### 3 — Instalar componentes del clúster (Helm)
+### 3 — Install cluster components (Helm)
 
 ```bash
 # AWS Load Balancer Controller
@@ -662,80 +662,80 @@ helm install csi-secrets-store \
   --set syncSecret.enabled=true
 ```
 
-### 4 — Desplegar manifiestos de Kubernetes
+### 4 — Deploy Kubernetes manifests
 
-El despliegue se ejecuta **automáticamente vía GitHub Actions**. Para un despliegue manual:
+Deployment runs **automatically via GitHub Actions**. For a manual deployment:
 
 ```bash
 cd despliegue/k8s
 kubectl apply -k .
 ```
 
-### 5 — Verificar el despliegue
+### 5 — Verify the deployment
 
 ```bash
-# Ver pods en ejecución
+# Check running pods
 kubectl get pods -n orchestra-namespace
 
-# Ver servicios e ingress
+# Check services and ingress
 kubectl get svc,ingress -n orchestra-namespace
 
-# Obtener URL pública del ALB
+# Get the public ALB URL
 kubectl get ingress orchestra-ingress -n orchestra-namespace \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 
-# Ver logs del backend
+# Tail backend logs
 kubectl logs -l app=backend-deployment -n orchestra-namespace --tail=50
 ```
 
 ---
 
-## 🛡 Seguridad
+## 🛡 Security
 
 ```mermaid
 mindmap
-  root((🛡 Seguridad))
-    Sin credenciales estáticas
-      GitHub Actions usa OIDC
-      Pods usan IRSA
-      STS temporales
+  root((🛡 Security))
+    No static credentials
+      GitHub Actions uses OIDC
+      Pods use IRSA
+      Temporary STS credentials
     Secrets Manager
-      Contraseña RDS gestionada por AWS
-      Rotación automática
-      Sin valores en manifiestos
-    Red aislada
-      RDS en subnet privada
+      RDS password managed by AWS
+      Auto-rotation enabled
+      No values in manifests
+    Isolated network
+      RDS in private subnet
       publicly_accessible false
-      SG DB solo TCP:5432 desde SG Backend
-      Subnets datos sin ruta a internet
-    Imágenes inmutables
+      DB SG allows only TCP:5432 from backend SG
+      Data subnets have no internet route
+    Immutable images
       ECR IMMUTABLE tags
-      Escaneo on push
-      Rollbacks seguros
-    gitignore estricto
-      Excluye pem key env
-      Excluye terraform.tfvars
-      Excluye credentials y secrets
-    RBAC mínimo
-      CSI Driver solo crea tokens SA
-      Namespaces aislados
-      ServiceAccounts dedicados
+      Scan on push
+      Safe rollbacks
+    Strict gitignore
+      Excludes pem key env
+      Excludes terraform.tfvars
+      Excludes credentials and secrets
+    Least privilege RBAC
+      CSI Driver only creates SA tokens
+      Isolated namespaces
+      Dedicated ServiceAccounts per component
 ```
 
-| Medida | Detalle |
-|--------|---------|
-| 🔑 Sin credenciales estáticas | GitHub Actions y pods EKS se autentican via OIDC/IRSA |
-| 🔐 Secrets Manager | Credenciales de RDS rotadas por AWS; nunca en texto plano |
-| 🌐 Red aislada | RDS en subnets privadas; SG de BD solo acepta TCP:5432 desde SG backend |
-| 📦 Imágenes inmutables | ECR con `IMMUTABLE` tags y escaneo automático de vulnerabilidades |
-| 🚫 `.gitignore` estricto | Excluidos: `*.pem`, `*.key`, `*credentials*`, `terraform.tfvars`, `.env` |
-| 🔒 RBAC mínimo | El CSI Driver solo tiene permiso de crear tokens de ServiceAccount |
+| Measure | Detail |
+|---------|---------|
+| 🔑 No static credentials | GitHub Actions and EKS pods authenticate via OIDC/IRSA |
+| 🔐 Secrets Manager | RDS credentials rotated by AWS; never stored in plain text |
+| 🌐 Isolated network | RDS in private subnets; DB SG only accepts TCP:5432 from backend SG |
+| 📦 Immutable images | ECR with `IMMUTABLE` tags and automatic vulnerability scanning |
+| 🚫 Strict `.gitignore` | Excluded: `*.pem`, `*.key`, `*credentials*`, `terraform.tfvars`, `.env` |
+| 🔒 Least privilege RBAC | CSI Driver only has permission to create ServiceAccount tokens |
 
 ---
 
 <div align="center">
 
-**Orchestra Deployment** · Infraestructura gestionada con Terraform · Despliegues con GitOps
+**Orchestra Deployment** · Infrastructure managed with Terraform · Deployments with GitOps
 
 Developed with ❤️ by chelucloud / cheludev (my other github) · [LinkedIn](https://www.linkedin.com/in/jose-luis-salvador-martin-b88ba3292/)
 
