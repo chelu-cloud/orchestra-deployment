@@ -1,0 +1,59 @@
+name: EKS Deployment Mock Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push-mock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Dummy Java Build
+        run: |
+          echo "Compiling Java Backend..."
+          sleep 5
+          echo "Build Success: orchestra-backend.jar created."
+
+      - name: Dummy Docker Build
+        run: |
+          echo "Building Docker Image: orchestra-backend:latest"
+          sleep 3
+          echo "Successfully tagged orchestra-backend:latest"
+
+      - name: Dummy ECR Push
+        run: |
+          echo "Login to Amazon ECR..."
+          echo "Pushing image to 622370466117.dkr.ecr.eu-west-3.amazonaws.com/mi-backend"
+          echo "Progress: [==========>          ] 50%"
+          sleep 4
+          echo "Push successful: digest sha256:716c02..."
+
+  deploy-mock:
+    needs: build-and-push-mock
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials (OIDC)
+        run: |
+          echo "Assuming IAM Role: github-actions-eks-role via OIDC..."
+          sleep 2
+          echo "AWS Session initialized."
+
+      - name: Connect to EKS
+        run: |
+          echo "Updating kubeconfig for cluster_app..."
+          echo "Context set to arn:aws:eks:eu-west-3:622370466117:cluster/cluster_app"
+
+      - name: Kubernetes Dry Run
+        run: |
+          echo "Injecting secrets and applying manifests..."
+          echo "namespace/orchestra-namespace unchanged"
+          echo "deployment.apps/backend-deployment configured (dry-run)"
+          echo "service/backend-service unchanged"
+          sleep 2
+          echo "Deployment finished successfully!"
