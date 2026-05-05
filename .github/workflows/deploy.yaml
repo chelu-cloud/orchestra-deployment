@@ -2,10 +2,9 @@ name: EKS GitOps Deployment
 
 on:
   workflow_dispatch:
-  
   push:
     branches: [ main ]
-    paths: [ 'k8s/**' ] 
+    paths: [ 'despliegue/k8s/**' ] 
     
   repository_dispatch:
     types: [deploy-trigger]
@@ -18,37 +17,36 @@ jobs:
   deploy-to-eks:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout del código (Infraestructura)
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::622370466117:role/github-actions-eks-role
-          aws-region: eu-west-3 
+          aws-region: eu-west-3
 
-      - name: Conectar al clúster EKS
+      - name: Update kubeconfig
         run: aws eks update-kubeconfig --name cluster_app --region eu-west-3
 
-      - name: Inyectar ARN del Secreto de la Base de Datos
+      - name: Inject Secret ARN
         env:
           DB_SECRET_ARN: ${{ secrets.AWS_DB_SECRET_ARN }}
         run: |
-          sed -i "s|PLACEHOLDER_OBJECTNAME|$DB_SECRET_ARN|g" k8s/secretProviderClass_2.yaml
+          sed -i "s|PLACEHOLDER_OBJECTNAME|$DB_SECRET_ARN|g" despliegue/k8s/secretProviderClass.yaml
 
-      - name: Actualizar Tag de Imagen Docker en Kustomize
+      - name: Update Image Tag
         if: github.event_name == 'repository_dispatch'
         run: |
-          cd k8s
-          # Leemos los datos que nos envía el repositorio de la aplicación
-          APP_NAME=${{ github.event.client_payload.app_name }} 
-          NEW_TAG=${{ github.event.client_payload.image_tag }} 
+          cd despliegue/k8s
           
-          # Construimos la URL de tu ECR (Ajusta la cuenta si es diferente)
+          APP_NAME=${{ github.event.client_payload.app_name }}
+          NEW_TAG=${{ github.event.client_payload.image_tag }}
+          
           ECR_URL="622370466117.dkr.ecr.eu-west-3.amazonaws.com/${APP_NAME}"
           
-          echo "Actualizando manifiestos para desplegar $APP_NAME con el tag $NEW_TAG..."
           kustomize edit set image $ECR_URL=$ECR_URL:$NEW_TAG
 
-      - name: Desplegar en Kubernetes
-        run: kubectl apply -k k8s/
+      - name: Kubectl apply
+        run: |
+          kubectl apply -k despliegue/k8s/
